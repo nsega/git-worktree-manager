@@ -1,33 +1,35 @@
 # Git Worktree Manager
 
-A simple and powerful Bash script for managing Git worktree sandboxes. Create isolated development environments for experimentation, feature development, or testing without disrupting your main working directory.
+A Bash script for managing Git worktrees as **named feature branches** (PR-bound) or **throwaway sandboxes** (timestamped experiments). Optimized for working alongside Claude Code: shared memory, linked `.claude/` config, and `.envrc`/`tmp` symlinked from a canonical repo.
 
 ## What is Git Worktree?
 
-Git worktrees allow you to check out multiple branches of a repository simultaneously in separate directories. This is useful for:
-- Testing changes without switching branches
-- Working on multiple features in parallel
-- Quick code reviews without stashing changes
-- Running tests on different branches simultaneously
+Git worktrees let you check out multiple branches in separate directories from a single repository. Useful for:
+- Parallel feature work without stashing or switching branches
+- Quick experiments that don't pollute your main checkout
+- Running tests on multiple branches at once
+- Keeping a stable "anchor" checkout while iterating elsewhere
 
 ## Features
 
-- **Create Sandboxes**: Instantly create new isolated worktrees from your main branch
-- **Smart Cleanup**: Remove sandboxes by name, branch, or timestamp pattern
-- **List Management**: View all active sandboxes at a glance
-- **Update Sandboxes**: Merge latest changes from main into your sandboxes
-- **Batch Updates**: Update all sandboxes at once with `--all` flag
-- **Auto-detection**: When run inside a sandbox, automatically operates on the current sandbox
+- **Two worktree styles**:
+  - **Named (topic)**: `create <topic>` → `<repo>-worktrees/<topic>/` on `<user>/<topic>` — for PR-bound work
+  - **Throwaway (sandbox)**: `create` (no args) → `<repo>-worktrees/sandbox/<timestamp>/` on `<user>/sandbox/<timestamp>` — for experiments
+- **Smart pattern matching**: cleanup/update by partial dir name or branch name
+- **Batch updates**: `update --all` merges `main` into every worktree
+- **Auto-detect current worktree**: bare `update` / `cleanup` operates on cwd if it's a worktree, else the most recent one
+- **Claude Code integration**: each worktree gets symlinks to a shared memory dir, shared `.claude/` subdirs (plans, agents, commands, skills), and the canonical `.envrc` / `tmp`
+- **Memory relink helper**: `relink-memory` repairs Claude Code memory symlinks across all worktrees
 
 ## Requirements
 
-- Git 2.5 or higher (for worktree support)
-- Bash 4.0 or higher
+- Git 2.5+ (worktree support)
+- Bash 4.0+
 - Unix-like environment (Linux, macOS, WSL)
 
 ## Installation
 
-1. Clone this repository:
+1. Clone the repository:
    ```bash
    git clone https://github.com/nsega/git-worktree-manager.git
    cd git-worktree-manager
@@ -35,122 +37,130 @@ Git worktrees allow you to check out multiple branches of a repository simultane
 
 2. Make the script executable:
    ```bash
-   chmod +x sandbox.sh
+   chmod +x worktree.sh
    ```
 
-3. (Optional) Add to your PATH or create an alias:
+3. **Edit the configuration block** at the top of `worktree.sh` to match your GitHub username and repo name:
    ```bash
-   # Add to ~/.bashrc or ~/.zshrc
-   alias sandbox="/path/to/git-worktree-manager/sandbox.sh"
+   GITHUB_USER_NAME="your-github-username"
+   GITHUB_REPOSITORY="your-repo-name"
+   ```
+
+4. (Optional) Add an alias to your shell rc:
+   ```bash
+   alias wt="/path/to/worktree.sh"
    ```
 
 ## Usage
 
-### Create a New Sandbox
+### Create a named worktree (PR-bound)
 
 ```bash
-./sandbox.sh create
+./worktree.sh create JIRA-101-enable-busy-signaling
 ```
 
-This will:
-- Fetch the latest changes from the main branch
-- Create a new branch named `nsega/sandbox/YYYYMMDD-HHMMSS`
-- Set up a worktree in a separate directory
-- Display the path for you to navigate to
+- Directory: `../<repo>-worktrees/JIRA-101-enable-busy-signaling/`
+- Branch: `<user>/JIRA-101-enable-busy-signaling`
 
-Example output:
-```
-🔄 Updating main...
-🪄 Creating sandbox branch 'nsega/sandbox/20250110-143022' in '../git-worktree-manager_sandbox/nsega-sandbox-20250110-143022'...
-✅ Sandbox created:
-  Directory: ../git-worktree-manager_sandbox/nsega-sandbox-20250110-143022
-  Branch:    nsega/sandbox/20250110-143022
+Topics are sanitized to kebab-case; case is preserved (ticket IDs like `JIRA-101` stay uppercase).
 
-👉 cd ../git-worktree-manager_sandbox/nsega-sandbox-20250110-143022 to start experimenting!
-```
-
-### List Active Sandboxes
+### Create a throwaway sandbox (no topic)
 
 ```bash
-./sandbox.sh list
+./worktree.sh create
 ```
 
-Shows all current sandbox worktrees with their paths and branches.
+- Directory: `../<repo>-worktrees/sandbox/YYYY-MM-DD-HHMMSS/`
+- Branch: `<user>/sandbox/YYYY-MM-DD-HHMMSS`
 
-### Update a Sandbox
+### List active worktrees
 
-Update the latest sandbox (or current if you're inside one):
 ```bash
-./sandbox.sh update
+./worktree.sh list
 ```
 
-Update a specific sandbox by pattern (matches directory name, path, or branch):
+Prints a table of directory, commit, and branch for every worktree managed by this script.
+
+### Update worktrees (merge `origin/main`)
+
 ```bash
-./sandbox.sh update 20250110-143022
-./sandbox.sh update feature-name
+./worktree.sh update                  # current worktree (if cwd is one), else latest
+./worktree.sh update <pattern>        # match by dir or branch substring
+./worktree.sh update proto api        # multiple targets
+./worktree.sh update --all            # every worktree
 ```
 
-Update all sandboxes at once:
+Merge conflicts are reported per-worktree; the script continues with the rest.
+
+### Clean up a worktree
+
 ```bash
-./sandbox.sh update --all
+./worktree.sh cleanup                 # latest worktree
+./worktree.sh cleanup <pattern>       # specific worktree by dir or branch substring
 ```
 
-The update command will merge the latest changes from the main branch into your sandbox branch.
+Removes the worktree directory, deletes its branch (sandbox branches are force-deleted; topic branches use `git branch -d` which refuses unmerged work), and unlinks the Claude Code memory symlink.
 
-### Clean Up a Sandbox
+### Relink Claude Code memory
 
-Remove the latest sandbox:
 ```bash
-./sandbox.sh cleanup
+./worktree.sh relink-memory              # current worktree (or all if cwd isn't one)
+./worktree.sh relink-memory <pattern>    # specific worktree
+./worktree.sh relink-memory --all        # every worktree
+./worktree.sh relink-memory --all --force  # back up and replace any real memory dirs
 ```
 
-Remove a specific sandbox by pattern:
-```bash
-./sandbox.sh cleanup 20250110-143022
-./sandbox.sh cleanup feature-name
-```
-
-This will remove the worktree and delete the branch.
+Repoints each worktree's `~/.claude/projects/<slug>/memory` at the canonical repo's memory dir. Useful as a one-time fix for worktrees created before the slug bug was fixed.
 
 ## Configuration
 
-You can customize the script by editing these variables at the top of `sandbox.sh`:
+All settings live at the top of `worktree.sh`:
 
 ```bash
-MAIN_BRANCH="main"                                  # Your default branch
-SANDBOX_BASE_DIR="../git-worktree-manager_sandbox"  # Where sandboxes are created
-REMOTE="origin"                                      # Remote repository name
+MAIN_BRANCH="main"                       # Default branch
+GITHUB_USER_NAME="nsega"                 # Used as branch prefix
+GITHUB_REPOSITORY="git-worktree-manager" # Drives worktree dir name + canonical repo path
+REMOTE="origin"                          # Remote name
 ```
 
-## How It Works
+Derived paths (you usually don't need to touch these):
+- `WORKTREES_BASE_DIR="../$GITHUB_REPOSITORY-worktrees"`
+- `SANDBOX_BASE_DIR="$WORKTREES_BASE_DIR/sandbox"`
+- `CANONICAL_REPO="$HOME/src/github.com/$GITHUB_USER_NAME/$GITHUB_REPOSITORY"`
+- `CANONICAL_MEMORY="$HOME/.claude/projects/<auto-slug>/memory"`
 
-1. **Create**: Creates a new branch from main and sets up a linked worktree in a separate directory
-2. **Cleanup**: Removes the worktree directory and deletes the associated branch
-3. **List**: Queries git for all worktrees and filters those matching the sandbox pattern
-4. **Update**: Fetches the latest main branch and merges it into the sandbox branch
+`CANONICAL_REPO` assumes the layout `~/src/github.com/<user>/<repo>` — adjust if your local layout differs.
 
-All sandboxes share the same Git object database, making them lightweight and fast to create.
+## What gets linked into each new worktree
 
-## Tips
+- `.envrc` → `$CANONICAL_REPO/.envrc`
+- `tmp/` → `$CANONICAL_REPO/tmp`
+- `.claude/{plans,agents,commands,skills}` — only those that exist in the canonical repo
+- `~/.claude/projects/<slug>/memory` → canonical repo's memory dir (so Claude Code sees the same persistent memory across all worktrees)
 
-- Sandboxes are timestamped, making it easy to identify when they were created
-- You can have multiple sandboxes active at the same time
-- Each sandbox is a full working directory with its own index and HEAD
-- Changes in one sandbox don't affect others or your main working directory
-- Use sandboxes for quick experiments, then clean them up when done
+## Recommended layout & discipline
+
+```
+~/src/github.com/<user>/
+  <repo>/                            Primary git anchor — keep on main/develop, don't do feature work here
+  <repo>-worktrees/<topic>/          PR-bound feature work
+  <repo>-worktrees/sandbox/<ts>/     Throwaway experiments
+```
+
+Rule of thumb: if you're about to `cd` into the anchor repo to start coding on a ticket, run `./worktree.sh create <ticket>` instead.
 
 ## Troubleshooting
 
-**"No sandbox found"**: Run `./sandbox.sh list` to see available sandboxes and verify your search pattern
-
-**Merge conflicts during update**: The script will notify you and preserve the conflicted state. Navigate to the sandbox directory to resolve conflicts manually.
-
-**Permission denied**: Ensure the script is executable with `chmod +x sandbox.sh`
+- **"No worktree found matching: …"** — run `./worktree.sh list` to see available targets.
+- **Merge conflicts during update** — the worktree is left in a conflicted state; resolve manually in that directory.
+- **Branch `<user>/foo` has unmerged or unpushed work — keeping it** — cleanup is refusing to delete a topic branch with work that isn't on `main` or the remote. Inspect with `git log main..<branch>`, then force-delete with `git branch -D <branch>` if you're sure.
+- **"Canonical memory dir not found"** — the script expects the canonical repo at `$CANONICAL_REPO` with a memory dir under `~/.claude/projects/`. Either run `claude` once in the canonical repo to create it, or adjust `CANONICAL_REPO` to match your layout.
+- **Permission denied** — `chmod +x worktree.sh`.
 
 ## Contributing
 
-Contributions are welcome! Feel free to submit issues or pull requests.
+Issues and PRs welcome.
 
 ## License
 
-MIT License - feel free to use and modify as needed.
+MIT.
