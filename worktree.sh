@@ -99,7 +99,7 @@ get_all_sandboxes() {
       fi
     fi
   done < <(git worktree list --porcelain)
-  printf '%s\n' "${sandboxes[@]}"
+  (( ${#sandboxes[@]} > 0 )) && printf '%s\n' "${sandboxes[@]}"
 }
 
 # === Helper function to get latest sandbox ===
@@ -621,7 +621,7 @@ LAYOUT & DISCIPLINE
 
   Rule of thumb: if you're about to 'cd' into $GITHUB_REPOSITORY/ to start coding on a
   new ticket, stop and run './worktree.sh create <ticket>' instead.
-,EOF
+EOF
 }
 
 case "$1" in
