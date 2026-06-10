@@ -20,7 +20,10 @@ WORKTREES_BASE_DIR="../$GITHUB_REPOSITORY-worktrees"             # Named (topic)
 SANDBOX_BASE_DIR="$WORKTREES_BASE_DIR/sandbox"       # Throwaway (no-topic) worktrees live here
 REMOTE="origin"
 CANONICAL_REPO="$HOME/src/github.com/$GITHUB_USER_NAME/$GITHUB_REPOSITORY"
-CANONICAL_MEMORY="$HOME/.claude/projects/$(echo "$CANONICAL_REPO" | sed 's|[^a-zA-Z0-9]|-|g')/memory"
+# Claude Code's config dir. Honors CLAUDE_CONFIG_DIR (where session/memory data
+# lives, e.g. ~/.claude-work); falls back to the default ~/.claude.
+CLAUDE_CONFIG_DIR="${CLAUDE_CONFIG_DIR:-$HOME/.claude}"
+CANONICAL_MEMORY="$CLAUDE_CONFIG_DIR/projects/$(echo "$CANONICAL_REPO" | sed 's|[^a-zA-Z0-9]|-|g')/memory"
 CLAUDE_SHARED_SUBDIRS=(plans agents commands skills)
 
 # === Helper ===
@@ -99,7 +102,7 @@ get_all_sandboxes() {
       fi
     fi
   done < <(git worktree list --porcelain)
-  (( ${#sandboxes[@]} > 0 )) && printf '%s\n' "${sandboxes[@]}"
+  printf '%s\n' "${sandboxes[@]}"
 }
 
 # === Helper function to get latest sandbox ===
@@ -139,7 +142,7 @@ link_claude_memory() {
   fi
   local slug
   slug=$(path_to_claude_slug "$abs_dir")
-  local proj_dir="$HOME/.claude/projects/$slug"
+  local proj_dir="$CLAUDE_CONFIG_DIR/projects/$slug"
   local memory_link="$proj_dir/memory"
 
   mkdir -p "$proj_dir"
@@ -166,7 +169,7 @@ cleanup_stray_buggy_slug() {
   stray=$(buggy_claude_slug "$abs_dir")
   [ "$correct" = "$stray" ] && return 0   # no '.' in path, nothing stray possible
 
-  local stray_dir="$HOME/.claude/projects/$stray"
+  local stray_dir="$CLAUDE_CONFIG_DIR/projects/$stray"
   [ ! -d "$stray_dir" ] && return 0
 
   if [ -L "$stray_dir/memory" ]; then
@@ -194,7 +197,7 @@ relink_claude_memory_for() {
 
   local slug proj_dir memory
   slug=$(path_to_claude_slug "$abs_dir")
-  proj_dir="$HOME/.claude/projects/$slug"
+  proj_dir="$CLAUDE_CONFIG_DIR/projects/$slug"
   memory="$proj_dir/memory"
 
   mkdir -p "$proj_dir"
@@ -241,7 +244,7 @@ unlink_claude_memory() {
   local abs_dir="$1"
   local slug
   slug=$(path_to_claude_slug "$abs_dir")
-  local proj_dir="$HOME/.claude/projects/$slug"
+  local proj_dir="$CLAUDE_CONFIG_DIR/projects/$slug"
   local memory_link="$proj_dir/memory"
 
   if [ -L "$memory_link" ]; then
